@@ -407,6 +407,7 @@
 
                             <TextBlock Grid.Row="9" Text="ENCODE SETTINGS" Classes="section-label"/>
 
+                            <!-- Preset buttons: 1080p / 720p / 540p / CUSTOM -->
                             <Grid Grid.Row="10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -443,12 +444,14 @@
                                 </Button>
                             </Grid>
 
+                            <!-- Custom resolution + bitrate inputs (visible only when CUSTOM preset selected) -->
                             <Border Grid.Row="11" x:Name="CustomSettingsPanel" IsVisible="False"
                                     Margin="0,8,0,0" Padding="12,10"
                                     CornerRadius="10" BorderThickness="1"
                                     Background="#0A0A0A" BorderBrush="#1E1E1E">
                                 <StackPanel Spacing="10">
 
+                                    <!-- ── Resolution ─────────────────────────── -->
                                     <StackPanel Spacing="6">
                                         <StackPanel Orientation="Horizontal" Spacing="7">
                                             <TextBlock Text="RESOLUTION" FontSize="8.5" FontWeight="Bold" Foreground="#585858"/>
@@ -473,6 +476,7 @@
                                         </Grid>
                                     </StackPanel>
 
+                                    <!-- ── Bitrate + FPS ───────────────────────── -->
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -480,6 +484,7 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
 
+                                        <!-- Bitrate -->
                                         <StackPanel Grid.Column="0" Spacing="6">
                                             <TextBlock Text="BITRATE" FontSize="8.5" FontWeight="Bold" Foreground="#585858"/>
                                             <Grid>
@@ -493,6 +498,7 @@
                                             </Grid>
                                         </StackPanel>
 
+                                        <!-- FPS -->
                                         <StackPanel Grid.Column="2" Spacing="6">
                                             <TextBlock Text="FPS" FontSize="8.5" FontWeight="Bold" Foreground="#585858"/>
                                             <Grid>

@@ -33,14 +33,11 @@ public partial class MainWindow : Window
     private static readonly IBrush Muted = new SolidColorBrush(Color.FromRgb(0x38, 0x38, 0x38));
     private static readonly IBrush Border_ = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
 
-<<<<<<< HEAD
     private static string _ffmpegExe = "ffmpeg";
     private static string _ffprobeExe = "ffprobe";
     private static readonly string FfmpegDataDir =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "fps-method");
 
-=======
->>>>>>> 80e5fa159319a2e549efd36f31334d8936243364
     private static readonly (string Name, string Sub, int MaxDim, double BitrateM)[] PresetDefs =
     {
         ("1080p",  "20 Mbps",  1920, 20.0),
@@ -115,7 +112,6 @@ public partial class MainWindow : Window
         if (idx >= 0) SelectPreset(idx);
     }
 
-<<<<<<< HEAD
     private async Task SetupFfmpegAsync()
     {
         var ffmpeg = await Task.Run(() => ProbeBinary("ffmpeg"));
@@ -268,8 +264,6 @@ public partial class MainWindow : Window
         }
     }
 
-=======
->>>>>>> 80e5fa159319a2e549efd36f31334d8936243364
     private void CustomWidthBox_LostFocus(object? sender, RoutedEventArgs e)
         => ApplyAspectLock(widthChanged: true);
 
