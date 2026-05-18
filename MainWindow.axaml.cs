@@ -3,7 +3,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -31,8 +33,11 @@ public partial class MainWindow : Window
     private static readonly IBrush Muted = new SolidColorBrush(Color.FromRgb(0x38, 0x38, 0x38));
     private static readonly IBrush Border_ = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
 
-    // (Name, Sub-label, ffmpeg scale max-dim, bitrate Mbps)
-    // Indices: 0=1080p, 1=720p, 2=540p, 3=Custom
+    private static string _ffmpegExe = "ffmpeg";
+    private static string _ffprobeExe = "ffprobe";
+    private static readonly string FfmpegDataDir =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "fps-method");
+
     private static readonly (string Name, string Sub, int MaxDim, double BitrateM)[] PresetDefs =
     {
         ("1080p",  "20 Mbps",  1920, 20.0),
@@ -41,9 +46,8 @@ public partial class MainWindow : Window
         ("CUSTOM", "manual",   0,    0.0),
     };
 
-    private int _selectedPreset = 0;      // 0=1080p, 1=720p, 2=540p, 3=Custom
+    private int _selectedPreset = 0;
     private Button[] _presetButtons = null!;
-    // Source dimensions (portrait, landscape and square all handled correctly)
     private int _srcW = 1920;
     private int _srcH = 1080;
 
@@ -59,6 +63,8 @@ public partial class MainWindow : Window
 
         _presetButtons = new[] { Preset0Btn, Preset1Btn, Preset2Btn, Preset3Btn };
         SelectPreset(0);
+
+        _ = SetupFfmpegAsync();
     }
 
     private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
@@ -69,8 +75,6 @@ public partial class MainWindow : Window
 
     private void MinBtn_Click(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void CloseBtn_Click(object? sender, RoutedEventArgs e) => Close();
-
-    // ── Preset selection ────────────────────────────────────────────────────────────────────
 
     private void SelectPreset(int index)
     {
@@ -108,7 +112,157 @@ public partial class MainWindow : Window
         if (idx >= 0) SelectPreset(idx);
     }
 
-    // ── Custom resolution aspect-ratio lock (fires on LostFocus, not on every keystroke) ──
+    private async Task SetupFfmpegAsync()
+    {
+        var ffmpeg = await Task.Run(() => ProbeBinary("ffmpeg"));
+        var ffprobe = await Task.Run(() => ProbeBinary("ffprobe"));
+
+        if (ffmpeg != null) _ffmpegExe = ffmpeg;
+        if (ffprobe != null) _ffprobeExe = ffprobe;
+
+        if (ffmpeg != null) return;
+
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            FFmpegBorder.IsVisible = true;
+
+            if (OperatingSystem.IsWindows())
+            {
+                FFmpegStatusText.Text =
+                    "FFmpeg not found, needed for encoding. " +
+                    "Click on download to install a portable copy (~100 MB)";
+                FFmpegDownloadBtn.IsVisible = true;
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                FFmpegStatusText.Text =
+                    "FFmpeg not found — install it with:\u2002brew install ffmpeg";
+            }
+            else
+            {
+                FFmpegStatusText.Text =
+                    "FFmpeg not found — install it with:\u2002sudo apt install ffmpeg  (or your distro’s equivalent)";
+            }
+        });
+    }
+
+    private static string? ProbeBinary(string name)
+    {
+        var local = Path.Combine(FfmpegDataDir,
+            OperatingSystem.IsWindows() ? name + ".exe" : name);
+        if (File.Exists(local) && TestBinary(local)) return local;
+
+        if (TestBinary(name)) return name;
+
+        return null;
+    }
+
+    private static bool TestBinary(string exe)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(exe, "-version")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using var p = Process.Start(psi);
+            p?.WaitForExit(4_000);
+            return p?.ExitCode == 0;
+        }
+        catch { return false; }
+    }
+
+    private async void FFmpegDownloadBtn_Click(object? sender, RoutedEventArgs e)
+    {
+        FFmpegDownloadBtn.IsEnabled = false;
+        await DownloadFfmpegAsync();
+        if (FFmpegBorder.IsVisible)
+            FFmpegDownloadBtn.IsEnabled = true;
+    }
+
+    private async Task DownloadFfmpegAsync()
+    {
+        const string url =
+            "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+
+        var zipPath = Path.Combine(Path.GetTempPath(), "ffmpeg_fpsmethod.zip");
+
+        LogAccent("\ndownloading ffmpeg\u2026");
+        LogDim("   this may take a moment (~100 MB)");
+
+        try
+        {
+            Directory.CreateDirectory(FfmpegDataDir);
+
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("FpsMethod/1.0");
+
+            {
+                using var response =
+                    await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+
+                long total = response.Content.Headers.ContentLength ?? -1L;
+                await using var netStream = await response.Content.ReadAsStreamAsync();
+                await using var fileStream = File.Create(zipPath);
+
+                var buf = new byte[81_920];
+                long got = 0, lastTick = 0;
+                int read;
+
+                while ((read = await netStream.ReadAsync(buf)) > 0)
+                {
+                    await fileStream.WriteAsync(buf.AsMemory(0, read));
+                    got += read;
+                    long now = Environment.TickCount64;
+                    if (total > 0 && now - lastTick >= 2_000)
+                    {
+                        lastTick = now;
+                        LogDim($"   {got * 100.0 / total:F0}%  —  {got / 1_048_576.0:F0} / {total / 1_048_576.0:F0} MB");
+                    }
+                }
+            }
+
+            LogInfo("extracting ffmpeg and ffprobe\u2026");
+
+            await Task.Run(() =>
+            {
+                using var zip = ZipFile.OpenRead(zipPath);
+                foreach (var entry in zip.Entries)
+                {
+                    var fname = Path.GetFileName(entry.FullName);
+                    if (fname is not ("ffmpeg.exe" or "ffprobe.exe")) continue;
+                    entry.ExtractToFile(Path.Combine(FfmpegDataDir, fname), overwrite: true);
+                    LogInfo($"   {fname}  ({entry.Length / 1_048_576.0:F0} MB)");
+                }
+            });
+
+            try { File.Delete(zipPath); } catch { }
+
+            var ffmpegPath = Path.Combine(FfmpegDataDir, "ffmpeg.exe");
+            var ffprobePath = Path.Combine(FfmpegDataDir, "ffprobe.exe");
+
+            if (File.Exists(ffmpegPath) && TestBinary(ffmpegPath))
+            {
+                _ffmpegExe = ffmpegPath;
+                _ffprobeExe = File.Exists(ffprobePath) ? ffprobePath : _ffprobeExe;
+                LogAccent("ffmpeg ready ✓");
+                Dispatcher.UIThread.Invoke(() => FFmpegBorder.IsVisible = false);
+            }
+            else
+            {
+                LogError("extraction problem — ffmpeg.exe not found after download");
+            }
+        }
+        catch (Exception ex)
+        {
+            try { File.Delete(zipPath); } catch { }
+            LogError($"download failed — {ex.Message}");
+        }
+    }
 
     private void CustomWidthBox_LostFocus(object? sender, RoutedEventArgs e)
         => ApplyAspectLock(widthChanged: true);
@@ -120,12 +274,9 @@ public partial class MainWindow : Window
     {
         if (e.Key != Key.Enter) return;
         ApplyAspectLock(widthChanged: sender == CustomWidthBox);
-        e.Handled = true;   // prevent the Enter from bubbling up
+        e.Handled = true;
     }
 
-    // Called when either dimension field loses focus.
-    // Snaps the typed value to an even number, then recalculates the OTHER dimension
-    // using the source video's exact pixel ratio (works for landscape, portrait and square).
     private void ApplyAspectLock(bool widthChanged)
     {
         if (_srcW <= 0 || _srcH <= 0) return;
@@ -133,8 +284,8 @@ public partial class MainWindow : Window
         if (widthChanged)
         {
             if (!int.TryParse(CustomWidthBox.Text?.Trim(), out int w) || w < 2) return;
-            w = Math.Max(2, (w / 2) * 2);                      // snap to even
-            CustomWidthBox.Text = w.ToString();               // normalise
+            w = Math.Max(2, (w / 2) * 2);
+            CustomWidthBox.Text = w.ToString();
             int h = (int)Math.Round((double)w * _srcH / _srcW);
             h = Math.Max(2, (h / 2) * 2);
             CustomHeightBox.Text = h.ToString();
@@ -142,8 +293,8 @@ public partial class MainWindow : Window
         else
         {
             if (!int.TryParse(CustomHeightBox.Text?.Trim(), out int h) || h < 2) return;
-            h = Math.Max(2, (h / 2) * 2);                      // snap to even
-            CustomHeightBox.Text = h.ToString();               // normalise
+            h = Math.Max(2, (h / 2) * 2);
+            CustomHeightBox.Text = h.ToString();
             int w = (int)Math.Round((double)h * _srcW / _srcH);
             w = Math.Max(2, (w / 2) * 2);
             CustomWidthBox.Text = w.ToString();
@@ -240,9 +391,6 @@ public partial class MainWindow : Window
             LogInfo("note: exceeds 1080p, will downscale on encode");
         }
 
-        // Seed custom-resolution fields with the source video's exact dimensions.
-        // LostFocus (not TextChanged) drives the AR lock, so setting Text here
-        // never triggers the linked-field recalculation.
         if (info.Width > 0 && info.Height > 0)
         {
             _srcW = info.Width;
@@ -261,13 +409,12 @@ public partial class MainWindow : Window
     {
         if (_srcPath == null) return;
 
-        // Validate custom settings up-front before opening the save picker
         int customW = 0;
         int customH = 0;
         double customBitrateM = 20.0;
         int customFps = 60;
 
-        if (_selectedPreset == 3)  // CUSTOM
+        if (_selectedPreset == 3)
         {
             if (!int.TryParse(CustomWidthBox.Text?.Trim(), out customW) || customW < 2)
             { LogError("invalid custom width \u2014 enter a positive integer"); return; }
@@ -298,28 +445,27 @@ public partial class MainWindow : Window
 
         try
         {
-            // ── Determine scale filter and target bitrate ──────────────────────────
             string? scaleFilter;
             double bitrateM;
             int forceFps;
             switch (_selectedPreset)
             {
-                case 0:  // 1080p · 20 Mbps
+                case 0:
                     scaleFilter = $"scale={PresetDefs[0].MaxDim}:{PresetDefs[0].MaxDim}:force_original_aspect_ratio=decrease";
                     bitrateM = PresetDefs[0].BitrateM;
                     forceFps = 60;
                     break;
-                case 1:  // 720p · 10 Mbps
+                case 1:
                     scaleFilter = $"scale={PresetDefs[1].MaxDim}:{PresetDefs[1].MaxDim}:force_original_aspect_ratio=decrease";
                     bitrateM = PresetDefs[1].BitrateM;
                     forceFps = 60;
                     break;
-                case 2:  // 540p · 6 Mbps
+                case 2:
                     scaleFilter = $"scale={PresetDefs[2].MaxDim}:{PresetDefs[2].MaxDim}:force_original_aspect_ratio=decrease";
                     bitrateM = PresetDefs[2].BitrateM;
                     forceFps = 60;
                     break;
-                default:  // 3 = Custom
+                default:
                     scaleFilter = $"scale={customW}:{customH}";
                     bitrateM = customBitrateM;
                     forceFps = customFps;
@@ -403,23 +549,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static bool IsFfmpegAvailable()
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("ffmpeg", "-version")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            using var p = Process.Start(psi);
-            p?.WaitForExit(4_000);
-            return p?.ExitCode == 0;
-        }
-        catch { return false; }
-    }
+    private static bool IsFfmpegAvailable() => TestBinary(_ffmpegExe);
 
     private static string DetectGpuEncoder(Action<string> log)
     {
@@ -430,7 +560,7 @@ public partial class MainWindow : Window
             log($"probing  {enc}\u2026");
             try
             {
-                var psi = new ProcessStartInfo("ffmpeg")
+                var psi = new ProcessStartInfo(_ffmpegExe)
                 {
                     Arguments = $"-f lavfi -i nullsrc=s=128x128:d=0.04 -frames:v 1 -c:v {enc} -f null -",
                     UseShellExecute = false,
@@ -464,7 +594,6 @@ public partial class MainWindow : Window
         var stem = Path.GetFileNameWithoutExtension(srcPath);
         var tmpPath = Path.Combine(dir, stem + "_enc_tmp.mp4");
 
-        // Build the video filter chain: optional scale first, then fps conversion
         var vfParts = new List<string>();
         if (scaleFilter != null) vfParts.Add(scaleFilter);
         vfParts.Add($"fps={forceFps}");
@@ -475,13 +604,9 @@ public partial class MainWindow : Window
 
         string encArgs = encoder switch
         {
-            // p7 = highest-quality NVENC preset; spatial+temporal AQ improve detail retention
             "hevc_nvenc" => $"-c:v hevc_nvenc -rc vbr -b:v {bitrateM:F0}M -maxrate {maxrateM:F0}M -bufsize {bufsizeM:F0}M -preset p7 -spatial_aq 1 -temporal_aq 1",
-            // quality mode tells AMF to prioritise visual quality over speed
             "hevc_amf" => $"-c:v hevc_amf -b:v {bitrateM:F0}M -maxrate {maxrateM:F0}M -bufsize {bufsizeM:F0}M -quality quality",
-            // look_ahead gives QSV better frame-level decisions
             "hevc_qsv" => $"-c:v hevc_qsv -b:v {bitrateM:F0}M -maxrate {maxrateM:F0}M -bufsize {bufsizeM:F0}M -look_ahead 1",
-            // slow preset squeezes significantly more quality per bit than medium
             _ => $"-c:v libx265 -b:v {bitrateM:F0}M -bufsize {bufsizeM:F0}M -preset slow",
         };
 
@@ -489,7 +614,7 @@ public partial class MainWindow : Window
 
         string args = $"-y -i \"{srcPath}\" {vfArg} {encArgs} -c:a copy -tag:v hvc1 \"{tmpPath}\"";
 
-        var psi = new ProcessStartInfo("ffmpeg")
+        var psi = new ProcessStartInfo(_ffmpegExe)
         {
             Arguments = args,
             UseShellExecute = false,
@@ -593,7 +718,7 @@ public partial class MainWindow : Window
 
     private static Mp4Info ParseWithFfprobe(string path, double szMb)
     {
-        var psi = new ProcessStartInfo("ffprobe")
+        var psi = new ProcessStartInfo(_ffprobeExe)
         {
             Arguments = $"-v quiet -print_format json -show_streams -show_format \"{path}\"",
             UseShellExecute = false,

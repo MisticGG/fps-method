@@ -550,27 +550,79 @@
                                 </ScrollViewer>
                             </Border>
 
-                            <Border Grid.Row="2"
-                                    x:Name="WarnBorder"
-                                    IsVisible="False"
-                                    CornerRadius="9"
-                                    BorderThickness="1"
-                                    Padding="13,10"
-                                    Margin="0,10,0,0">
-                                <Border.Background>
-                                    <SolidColorBrush Color="#150000" Opacity="0.95"/>
-                                </Border.Background>
-                                <Border.BorderBrush>
-                                    <SolidColorBrush Color="#380000"/>
-                                </Border.BorderBrush>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="⚠" FontSize="12" Foreground="#BB2020"
-                                               VerticalAlignment="Top" Margin="0,1,10,0"/>
-                                    <TextBlock x:Name="WarnText"
-                                               FontSize="10.5" Foreground="#772020"
-                                               TextWrapping="Wrap" LineHeight="17"/>
-                                </StackPanel>
-                            </Border>
+                            <StackPanel Grid.Row="2">
+
+                                <Border x:Name="FFmpegBorder"
+                                        IsVisible="False"
+                                        CornerRadius="9" BorderThickness="1"
+                                        Padding="13,10" Margin="0,10,0,0">
+                                    <Border.Background>
+                                        <SolidColorBrush Color="#0F0800" Opacity="0.95"/>
+                                    </Border.Background>
+                                    <Border.BorderBrush>
+                                        <SolidColorBrush Color="#2C1600"/>
+                                    </Border.BorderBrush>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                            <TextBlock Text="⚠" FontSize="12" Foreground="#AA5500"
+                                                       VerticalAlignment="Top" Margin="0,1,10,0"/>
+                                            <TextBlock x:Name="FFmpegStatusText"
+                                                       FontSize="10.5" Foreground="#6B3A00"
+                                                       TextWrapping="Wrap" LineHeight="17"
+                                                       Text="FFmpeg not found."/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                x:Name="FFmpegDownloadBtn"
+                                                IsVisible="False"
+                                                Click="FFmpegDownloadBtn_Click"
+                                                Cursor="Hand" Focusable="False"
+                                                Margin="12,0,0,0" Padding="10,5"
+                                                Background="Transparent" VerticalAlignment="Center">
+                                            <Button.BorderBrush>
+                                                <SolidColorBrush Color="#3A2000"/>
+                                            </Button.BorderBrush>
+                                            <Button.Template>
+                                                <ControlTemplate>
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="1" CornerRadius="6"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter Content="{TemplateBinding Content}"
+                                                                          HorizontalContentAlignment="Center"
+                                                                          VerticalContentAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                            <TextBlock Text="DOWNLOAD" FontSize="9"
+                                                       FontWeight="Bold" Foreground="#BB6600"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+
+                                <Border x:Name="WarnBorder"
+                                        IsVisible="False"
+                                        CornerRadius="9" BorderThickness="1"
+                                        Padding="13,10" Margin="0,10,0,0">
+                                    <Border.Background>
+                                        <SolidColorBrush Color="#150000" Opacity="0.95"/>
+                                    </Border.Background>
+                                    <Border.BorderBrush>
+                                        <SolidColorBrush Color="#380000"/>
+                                    </Border.BorderBrush>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="⚠" FontSize="12" Foreground="#BB2020"
+                                                   VerticalAlignment="Top" Margin="0,1,10,0"/>
+                                        <TextBlock x:Name="WarnText"
+                                                   FontSize="10.5" Foreground="#772020"
+                                                   TextWrapping="Wrap" LineHeight="17"/>
+                                    </StackPanel>
+                                </Border>
+
+                            </StackPanel>
 
                             <Grid Grid.Row="4">
                                 <Grid.ColumnDefinitions>
