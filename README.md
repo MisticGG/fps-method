@@ -12,6 +12,7 @@ Everything runs on your machine. Nothing leaves your computer.
 
 Grab a build from [Releases](../../releases) — single-file executables for Windows, macOS (Intel + Apple Silicon) and Linux, no installer needed.
 
+
 ---
 
 ## Usage
