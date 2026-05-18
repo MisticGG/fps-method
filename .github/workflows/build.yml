@@ -1,0 +1,89 @@
+name: Build & Release
+
+# Runs on every push/PR to main.
+# When a version tag (v1.2.3) is pushed it also creates a GitHub Release with a single-file self-contained binary for every platform.
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            ext: .exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            ext: ""
+          - os: macos-13
+            rid: osx-x64
+            ext: ""
+          - os: macos-14
+            rid: osx-arm64
+            ext: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Publish
+        run: >
+          dotnet publish
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -o publish
+
+      - name: Rename binary
+        shell: bash
+        run: mv "publish/FpsMethod${{ matrix.ext }}" "FpsMethod-${{ matrix.rid }}${{ matrix.ext }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FpsMethod-${{ matrix.rid }}
+          path: FpsMethod-${{ matrix.rid }}${{ matrix.ext }}
+          if-no-files-found: error
+
+  # Only runs when a v* tag is pushed; waits for all build jobs first.
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
