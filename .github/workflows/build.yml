@@ -68,13 +68,12 @@ jobs:
           path: FpsMethod-${{ matrix.rid }}${{ matrix.ext }}
           if-no-files-found: error
 
-  # Only runs when a v* tag is pushed; waits for all build jobs first.
-  # Uses always() so a single platform failure doesn't silently block the release.
+  # Only runs when a v* tag is pushed and every build job succeeded.
   release:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
-    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.build.result != 'cancelled'
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
 
     steps:
       - name: Download all artifacts
