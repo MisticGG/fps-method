@@ -28,7 +28,7 @@ jobs:
           - os: ubuntu-latest
             rid: linux-x64
             ext: ""
-          - os: macos-13
+          - os: macos-14
             rid: osx-x64
             ext: ""
           - os: macos-14
@@ -69,11 +69,12 @@ jobs:
           if-no-files-found: error
 
   # Only runs when a v* tag is pushed; waits for all build jobs first.
+  # Uses always() so a single platform failure doesn't silently block the release.
   release:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.build.result != 'cancelled'
 
     steps:
       - name: Download all artifacts
@@ -87,3 +88,4 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+          fail_on_unmatched_files: false
