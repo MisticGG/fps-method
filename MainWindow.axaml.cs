@@ -31,8 +31,6 @@ public partial class MainWindow : Window
     private static readonly IBrush Muted = new SolidColorBrush(Color.FromRgb(0x38, 0x38, 0x38));
     private static readonly IBrush Border_ = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
 
-    // (Name, Sub-label, ffmpeg scale max-dim, bitrate Mbps)
-    // Indices: 0=1080p, 1=720p, 2=540p, 3=Custom
     private static readonly (string Name, string Sub, int MaxDim, double BitrateM)[] PresetDefs =
     {
         ("1080p",  "20 Mbps",  1920, 20.0),
@@ -41,9 +39,8 @@ public partial class MainWindow : Window
         ("CUSTOM", "manual",   0,    0.0),
     };
 
-    private int _selectedPreset = 0;      // 0=1080p, 1=720p, 2=540p, 3=Custom
+    private int _selectedPreset = 0;
     private Button[] _presetButtons = null!;
-    // Source dimensions (portrait, landscape and square all handled correctly)
     private int _srcW = 1920;
     private int _srcH = 1080;
 
@@ -69,8 +66,6 @@ public partial class MainWindow : Window
 
     private void MinBtn_Click(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void CloseBtn_Click(object? sender, RoutedEventArgs e) => Close();
-
-    // ── Preset selection ────────────────────────────────────────────────────────────────────
 
     private void SelectPreset(int index)
     {
@@ -108,8 +103,6 @@ public partial class MainWindow : Window
         if (idx >= 0) SelectPreset(idx);
     }
 
-    // ── Custom resolution aspect-ratio lock (fires on LostFocus, not on every keystroke) ──
-
     private void CustomWidthBox_LostFocus(object? sender, RoutedEventArgs e)
         => ApplyAspectLock(widthChanged: true);
 
@@ -120,12 +113,9 @@ public partial class MainWindow : Window
     {
         if (e.Key != Key.Enter) return;
         ApplyAspectLock(widthChanged: sender == CustomWidthBox);
-        e.Handled = true;   // prevent the Enter from bubbling up
+        e.Handled = true;
     }
 
-    // Called when either dimension field loses focus.
-    // Snaps the typed value to an even number, then recalculates the OTHER dimension
-    // using the source video's exact pixel ratio (works for landscape, portrait and square).
     private void ApplyAspectLock(bool widthChanged)
     {
         if (_srcW <= 0 || _srcH <= 0) return;
@@ -133,8 +123,8 @@ public partial class MainWindow : Window
         if (widthChanged)
         {
             if (!int.TryParse(CustomWidthBox.Text?.Trim(), out int w) || w < 2) return;
-            w = Math.Max(2, (w / 2) * 2);                      // snap to even
-            CustomWidthBox.Text = w.ToString();               // normalise
+            w = Math.Max(2, (w / 2) * 2);
+            CustomWidthBox.Text = w.ToString();
             int h = (int)Math.Round((double)w * _srcH / _srcW);
             h = Math.Max(2, (h / 2) * 2);
             CustomHeightBox.Text = h.ToString();
@@ -142,8 +132,8 @@ public partial class MainWindow : Window
         else
         {
             if (!int.TryParse(CustomHeightBox.Text?.Trim(), out int h) || h < 2) return;
-            h = Math.Max(2, (h / 2) * 2);                      // snap to even
-            CustomHeightBox.Text = h.ToString();               // normalise
+            h = Math.Max(2, (h / 2) * 2);
+            CustomHeightBox.Text = h.ToString();
             int w = (int)Math.Round((double)h * _srcW / _srcH);
             w = Math.Max(2, (w / 2) * 2);
             CustomWidthBox.Text = w.ToString();
@@ -240,9 +230,6 @@ public partial class MainWindow : Window
             LogInfo("note: exceeds 1080p, will downscale on encode");
         }
 
-        // Seed custom-resolution fields with the source video's exact dimensions.
-        // LostFocus (not TextChanged) drives the AR lock, so setting Text here
-        // never triggers the linked-field recalculation.
         if (info.Width > 0 && info.Height > 0)
         {
             _srcW = info.Width;
@@ -261,13 +248,12 @@ public partial class MainWindow : Window
     {
         if (_srcPath == null) return;
 
-        // Validate custom settings up-front before opening the save picker
         int customW = 0;
         int customH = 0;
         double customBitrateM = 20.0;
         int customFps = 60;
 
-        if (_selectedPreset == 3)  // CUSTOM
+        if (_selectedPreset == 3)
         {
             if (!int.TryParse(CustomWidthBox.Text?.Trim(), out customW) || customW < 2)
             { LogError("invalid custom width \u2014 enter a positive integer"); return; }
@@ -298,28 +284,27 @@ public partial class MainWindow : Window
 
         try
         {
-            // ── Determine scale filter and target bitrate ──────────────────────────
             string? scaleFilter;
             double bitrateM;
             int forceFps;
             switch (_selectedPreset)
             {
-                case 0:  // 1080p · 20 Mbps
+                case 0:
                     scaleFilter = $"scale={PresetDefs[0].MaxDim}:{PresetDefs[0].MaxDim}:force_original_aspect_ratio=decrease";
                     bitrateM = PresetDefs[0].BitrateM;
                     forceFps = 60;
                     break;
-                case 1:  // 720p · 10 Mbps
+                case 1:
                     scaleFilter = $"scale={PresetDefs[1].MaxDim}:{PresetDefs[1].MaxDim}:force_original_aspect_ratio=decrease";
                     bitrateM = PresetDefs[1].BitrateM;
                     forceFps = 60;
                     break;
-                case 2:  // 540p · 6 Mbps
+                case 2:
                     scaleFilter = $"scale={PresetDefs[2].MaxDim}:{PresetDefs[2].MaxDim}:force_original_aspect_ratio=decrease";
                     bitrateM = PresetDefs[2].BitrateM;
                     forceFps = 60;
                     break;
-                default:  // 3 = Custom
+                default:
                     scaleFilter = $"scale={customW}:{customH}";
                     bitrateM = customBitrateM;
                     forceFps = customFps;
@@ -464,7 +449,6 @@ public partial class MainWindow : Window
         var stem = Path.GetFileNameWithoutExtension(srcPath);
         var tmpPath = Path.Combine(dir, stem + "_enc_tmp.mp4");
 
-        // Build the video filter chain: optional scale first, then fps conversion
         var vfParts = new List<string>();
         if (scaleFilter != null) vfParts.Add(scaleFilter);
         vfParts.Add($"fps={forceFps}");
@@ -475,13 +459,9 @@ public partial class MainWindow : Window
 
         string encArgs = encoder switch
         {
-            // p7 = highest-quality NVENC preset; spatial+temporal AQ improve detail retention
             "hevc_nvenc" => $"-c:v hevc_nvenc -rc vbr -b:v {bitrateM:F0}M -maxrate {maxrateM:F0}M -bufsize {bufsizeM:F0}M -preset p7 -spatial_aq 1 -temporal_aq 1",
-            // quality mode tells AMF to prioritise visual quality over speed
             "hevc_amf" => $"-c:v hevc_amf -b:v {bitrateM:F0}M -maxrate {maxrateM:F0}M -bufsize {bufsizeM:F0}M -quality quality",
-            // look_ahead gives QSV better frame-level decisions
             "hevc_qsv" => $"-c:v hevc_qsv -b:v {bitrateM:F0}M -maxrate {maxrateM:F0}M -bufsize {bufsizeM:F0}M -look_ahead 1",
-            // slow preset squeezes significantly more quality per bit than medium
             _ => $"-c:v libx265 -b:v {bitrateM:F0}M -bufsize {bufsizeM:F0}M -preset slow",
         };
 
